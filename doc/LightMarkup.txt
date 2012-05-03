@@ -1,0 +1,22 @@
+*LightMarkup.txt* Simple, beautiful, lightweight markup.
+(NOTE: set ft=help)
+Formatting commands for markdown, reStructuredText and plain old text files
+
+================================================================================
+
+Global Variables
+
+To set your own list of characters use g:LMCharacterList: >
+
+    let g:LMCharacterList=['*','=']
+
+    " now this will be
+    :LMUnderline 1 ->   my underlined text
+                        ******************
+
+g:LMCharacterList - ordered list of characters, in descending order of
+                    precedence. (when call :LMUnderline {char} if {char} is a
+                    number, converts to g:LMCharacterList[{char}-1]
+
+                    default: g:LMCharacterList=['=','-','"','^','*']
+
