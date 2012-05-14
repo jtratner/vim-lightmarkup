@@ -167,3 +167,5 @@ endfunction
 " function! ReformatTable() range
 
 " 
+function! CreateComplexTable(...)
+endfunction
