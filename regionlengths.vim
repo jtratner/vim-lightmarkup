@@ -1,21 +1,41 @@
+" TODO: harmonize use of variables by the simple and complicated complex tables
+
+
 " These two functions should be called on entry and exit to LightMarkup
 " In other words, all commands should be of form:
-" command! LMsomething :call ClearEnvironment()<CR>:<line1>,<line2>call LMsomething<CR>:call RestoreEnvironment
-function! ClearEnvironment()
+" command! LMsomething :call SaveEnvironment()<CR>:<line1>,<line2>call LMsomething<CR>:call RestoreEnvironment
+" TODO: this doesn't work,fix it.
+function! SaveEnvironment()
     if !exists("b:saved_environment")
         " TODO: save cursor position too
-        let b:saved_environment = ":set tw=".&tw.":set fo=".&fo.":set fdm=".&fdm
+        let cursorpos = getpos('.')
+        echo cursorpos
+        let b:saved_environment = ":set tw=".&tw.":set fo=".&fo.":set fdm=".&fdm.":call setpos('.', ".string(cursorpos)." )"
+        echo b:saved_environment
     endif
-    " Now set them all to 0/nothing
-    exe ":set tw=0:set fo=:set fdm="
 endfunction
 function! RestoreEnvironment()
-    if exists("s:saved_environment")
-        exe s:saved_environment
-        echo s:saved_environment
+    if exists("b:saved_environment")
+        exe b:saved_environment
+        echo b:saved_environment
     endif
-    " erase the variable so that if ClearEnvironment called again will restore
+    " erase the variable so that if SaveEnvironment called again will restore
     unlet b:saved_environment
+endfunction
+
+" Kudos to Christian Brabandt for this simple solution to summing a list
+function! SumList(lst)
+    if len(a:lst) == 0
+        "empty list defined as sum of 0 (by me)
+        return 0
+    elseif type(a:lst) == type(0)
+        return a:lst
+    elseif (len(a:lst) == 1) && (type(a:lst) == type([]))
+        " if only one item, convert it to a number (best way to be sure a number is returned, methinks)
+        return str2nr(string(a:lst[0]))
+    else
+        return eval(join(a:lst,' + '))
+    endif
 endfunction
 
 let g:LMColSep = '|'
@@ -59,23 +79,23 @@ function! GetMaxLengths(nested_list)
     " minifunction to get the length of the list of lists
     " make a list of lengths of each region
     let nested_lengths = map(copy(a:nested_list), 'NestedLength(v:val)')
-    let col_width = []
+    let col_widths = []
     " go line by line
     for line in nested_lengths
         " set i to zero so we can sync our place with col_width
         for iter in range(0,len(line)-1)
             " if the current region is longer than the current value for the region, store it
             " NOTE: using get() here to avoid list index errors (returns 0 if doesn't exist)
-            " if col_width doesn't have the current item, then store the
+            " if col_widths doesn't have the current item, then store the
             " rest and stop going through line
-            if (get(col_width, iter, "NONE") == "NONE")
-                call extend(col_width, line[iter :])
+            if (get(col_widths, iter, "NONE") == "NONE")
+                call extend(col_widths, line[iter :])
                 break
             endif
-            let col_width[iter] = col_width[iter] < line[iter] ? line[iter] : col_width[iter]
+            let col_widths[iter] = col_widths[iter] < line[iter] ? line[iter] : col_widths[iter]
         endfor
     endfor
-    return col_width
+    return col_widths
 endfunction
 
 "separator to use for initial table detection
@@ -109,12 +129,25 @@ function! PadRegions(line,col_widths,sep,space)
         let newline = newline .a:space. PadItem(region,a:col_widths[iter]) .a:space.a:sep
         let iter += 1
     endfor
-    " add the rest of the columns in as white space
-    for col_width in a:col_widths[iter : ]
-        " need to add 3 spaces for appropriate in-between spacing
-        let newline = newline . PadItem('',col_width) . '   '
-    endfor
+    " add the rest of the columns in as white space and swap out the last character
+    if len(a:col_widths) > iter
+        for col_width in a:col_widths[iter : ]
+            " need to add 3 spaces for appropriate in-between spacing
+            let newline = newline . PadItem('',col_width) . '   '
+        endfor
+        let newline = newline[0:len(newline)-2] . a:sep
+    endif
     return newline
+endfunction
+
+"creates the row-separators for an rst complex table, given input
+" col_widths - width of each column
+" optional: col_marker [0] - default: '+'; default: '-'
+" TODO: decide whether to make this universal or not
+function! ComplexRowSep(col_widths,...)
+    let col_marker = get(a:000, 0, '+')
+    let fill_char = get(a:000, 1, '-')
+    return col_marker . join(map(a:col_widths, "repeat(fill_char, v:val + 2 )"), col_marker) . col_marker
 endfunction
 " creates a simple table format as defined in rst syntax currently
 " overwrites existing lines with new table adds padding as well as
@@ -130,25 +163,26 @@ endfunction
 " rowseparators defined by: +. repeat('-',colwidth + 4-2) . +
 function! MakeComplexTable() range
     let linelist = GetLinesAndSplit(a:firstline,a:lastline, g:LMSpaceExpr)
-    let col_width = GetMaxLengths(linelist)
+    " THIS IS ALL UI-INDEPENDENT
+    let col_widths = GetMaxLengths(linelist)
     let newlinelist = []
     " go line by line and pad them according to max_length
     for line in linelist
         " TODO: just add rowsep in here instead
-        let newlinelist += [PadRegions(line,col_width,g:LMColSep,' ')]
+        let newlinelist += [PadRegions(line,col_widths,g:LMColSep,' ')]
     endfor
     " to make the top of the table, just join dashes equal to the maxlength of
     " so it's actually colwidth-1+len(spacers) [-1 for the '+' sign]
     " position cursor at beginning of first column of last line
     call cursor(a:lastline, 1)
-    let rowsep = map(col_width, "repeat('-', v:val + 2 )")
-    let newrowsep = '+' . join(rowsep, '+') . '+'
+    let rowsep=ComplexRowSep(col_widths,'+','-')
     " To insert the carriage return key, you need to type IN INSERT MODE:
     " CTRL-V CTRL-M (check out :help ins-special-keys for more.) This took so
     " long to figure out and it was on Stack Overflow the whole time. :P
-    let joined = join(map(newlinelist, 'v:val . "" . newrowsep'), '')
+    let joined = join(map(newlinelist, 'v:val . "" . rowsep'), '')
     " which is why I find it incredibly strange that it works here :P
-    let cmd = newrowsep."".joined
+    let cmd = rowsep."".joined
+    " BELOW HERE IS UI-DEPENDENT
     exe "normal! :set tw=0\<Esc> o\<Esc>i".cmd
 endfunction
 
@@ -188,6 +222,7 @@ endfunction
 " or (2) a list of strings, where the additional lines are the continuation of
 " the previous lines
 " extrapre and extrapost describe how to fill added columns
+" If you want to produce a table where empty columns get separators just pass extrapost with 'a:sep'
 function! PadAndWrapLine(line,col_widths,sep,space,...)
     " slightly ugly to do it this way, but I don't have to rely on tlib zip,
     " which is a bonus
@@ -195,7 +230,7 @@ function! PadAndWrapLine(line,col_widths,sep,space,...)
     let numrows = 0
     let padded = []
     let extrapre = get(a:000,0,'')
-    let extrapost = get(a:000,1,'')
+    let extrapost = get(a:000,1,' ') " default should be one space (b/c in place of separator)
     if (len(a:space) > 1) || (len(a:sep) > 1) || (len(a:space) == 0) || (len(a:space) == 0)
         echoerr "Table spacer and separator must be at least a single character"
     endif
@@ -213,11 +248,15 @@ function! PadAndWrapLine(line,col_widths,sep,space,...)
     endfor
     "get the first items of every element, to make into a full row
     let firstrow = map(copy(padded), 'v:val[0]')
-    for col_width in a:col_widths[iter : ]
-        " for the rest of these items, don't want the separator, so we'll put
-        " space instad (so that there is basically nothing in the table)
-        let firstrow += PadAndWrapItem('',col_width,extrapre,extrapost,a:space)
-    endfor
+    if len(a:col_widths) > iter
+        for col_width in a:col_widths[iter : ]
+            " for the rest of these items, don't want the separator, so we'll put
+            " space instad (so that there is basically nothing in the table)
+            let firstrow += PadAndWrapItem('',col_width,extrapre,extrapost,a:space)
+        endfor
+        " need this to add a separator to the very end if additional columns were added
+        let firstrow[-1] = firstrow[-1][0:len(firstrow[-1])-2] . a:sep
+    endif
     " make a blank row by subbing out everything but separator from the first
     " row
     let blankrow = map(copy(firstrow), "substitute(v:val, '[^\\".a:sep."]', a:space, 'g')")
@@ -240,6 +279,10 @@ function! PadAndWrapLine(line,col_widths,sep,space,...)
     " add the rest of the columns in as white space for the moment
 endfunction
 
+function! SpaceColumns(col_widths, max_width)
+    total_real_width = 
+endfunction
+
 " CreateComplexTable
 " no arguments - uses tw to make table
 "first non-named arg: tablewidth
@@ -252,13 +295,12 @@ let g:LMPipeExpr = '\s|\s'
 let g:LMTableSearches = {'spaces':g:LMSpaceExpr, 'space':g:LMSpaceExpr, 'pipes':g:LMPipeExpr, 'pipe':g:LMPipeExpr, '|':g:LMPipeExpr, ' ':g:LMSpaceExpr}
 
 " TODO: have this restore cursor position and environment
-
 function! CreateComplexTable(TableType,...) range
     " either given a matching string to a search or (hopefully) a regular
     " expression
     let b:LMTableSeparator = get(g:LMTableSearches, a:TableType, a:TableType)
-    " initial arg is tablewidth, others are the defined cols
-    let b:LMTableWidth = get(a:000, 0, (&tw > 0 ? &tw : 80))
+    " initial arg is tablewidth, others are the defined cols; if TableWidth is 0, no spacing will occur
+    let b:LMTableWidth = get(a:000, 0, &tw)
     let b:LMDefinedCols = a:000[1 : ] " returns [] or sublist
     if a:firstline - a:lastline == 0
         " if we weren't given a real range, get it using the paragraph textobject
@@ -270,22 +312,48 @@ function! CreateComplexTable(TableType,...) range
     echo "Formatting ".b:LMStartLine.",".b:LMEndLine." by ".b:LMTableSeparator." using width of ".b:LMTableWidth." with cols of length ".string(b:LMDefinedCols)
     " grab lines from text and get col_widths, etc
     let lines = GetLinesAndSplit(b:LMStartLine,b:LMEndLine,b:LMTableSeparator)
+    " BELOW HERE IS THE INTERNAL FUNCTION
     let col_widths = GetMaxLengths(lines)
-   
+    echo col_widths
     " Put defined columns in the col_widths for use in padding/wrapping (note
     " that if DefinedCols is *longer* than col_widths, additional blank
     " columns will be included in table
-    if len(b:LMDefinedCols) >= len(col_widths)
-        let col_widths = copy(b:LMDefinedcols)
+    if len(b:LMDefinedCols) > len(col_widths)
+        echo "if clause"
+        let col_widths = copy(b:LMDefinedCols)
     else
+        echo "else clause"
         let iter = 0
         for defcol in b:LMDefinedCols
             let col_widths[iter] = defcol
             let iter += 1
         endfor
-        unlet iter
+        " Now space out the rest of the columns s.t. they fit within given
+        " parameters (if width == 0, no spacing will occur, just like tw, etc)
+        if b:LMTableWidth > 0
+            for spaced_column in SpaceColumns(col_widths[iter : ], b:LMTableWidth - sum(b:LMDefinedCols))
+                let col_widths[iter] = spaced_column
+                let iter += 1
+            endfor
+            unlet iter
+        endif
     endif
+    "TODO: make this easily changed
+    let rowsep = ComplexRowSep(copy(col_widths),'+','-')
+    " use PadAndWrapLine on every element to produce a grouped list of rows,
+    " each group is a "wrapped_row" (in other words, spills over on to
+    " multiple lines, so don't put row separators between them). Thus, we map
+    " adding a row sep to each and finally joining them with 
+    echo col_widths
+    echo map(copy(lines), 'len(v:val)')
+    let wrapped_rows = map(deepcopy(lines), "PadAndWrapLine(v:val,col_widths,'|',' ')")
+    let joined_rows = map(wrapped_rows, "join(add(v:val,rowsep),'')")
+    let cmd = rowsep . '' . join(joined_rows,'')
+    echo cmd
+    call cursor(a:lastline, 1)
+    exe "normal! :set tw=0\<Esc> o\<Esc>i".cmd
 endfunction
+
 vmap <leader>w :CreateSpaceTable<CR>
 map <leader>w :CreateSpaceTable<CR>
 command! -range -nargs=* CreateSpaceTable <line1>,<line2>call CreateComplexTable('spaces',<f-args>)
