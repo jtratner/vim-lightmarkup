@@ -35,8 +35,19 @@ let TestList = [
     \ [ 'PadAndWrapLine-short', "PadAndWrapLine([1],[1],'|',' ')","['| 1 |']"],
     \ [ 'PadAndWrapLine-normal', "PadAndWrapLine([12,1,1234],[3,2,5],'|',' ')", "['| 12  | 1  | 1234  |']"],
     \ [ 'PadAndWrapLine-multiline', "PadAndWrapLine([1234,4321,'abcd'],[1,1,1],'|',' ')", "['| 1 | 4 | a |', '| 2 | 3 | b |', '| 3 | 2 | c |', '| 4 | 1 | d |']"],
+    \ [ 'PadAndWrapLine-extraspace', "PadAndWrapLine([12],[2,3,2],'|',' ')", "['| 12 |          |']"],
+    \ [ 'PadAndWrapLine-multilineextraspace', "PadAndWrapLine([12,4567],[2,1,3,2],'|',' ')", "['| 12 | 4 |          |', '|    | 5 |          |', '|    | 6 |          |', '|    | 7 |          |']"],
     \ [ 'PadRegionsEmpty', "PadAndWrapLine([],[4,1,3],'!','.','','!')", "['!......!...!.....!']"],
     \ [ 'PadRegionsSingle', "PadAndWrapLine([1],[5],'!','.')", "['!.1.....!']"],
+    \ [ 'ComplexRowSep-empty', "ComplexRowSep([],'','')", "''"],
+    \ [ 'ComplexRowSep-simple', "ComplexRowSep([5],'+','-')", "'+-------+'"],
+    \ [ 'ComplexRowSep-multi', "ComplexRowSep([1,2,3,4],'+','-')", "'+---+----+-----+------+'"],
+    \ [ 'ComplexRowSep-defaults', "ComplexRowSep([4,5])", "'+------+-------+'"],
+    \ [ 'SumList-empty', "SumList([])", "0"],
+    \ [ 'SumList-single', "SumList([1])", "1"],
+    \ [ 'SumList-single2', "SumList([3])", "3"],
+    \ [ 'SumList-nolist', "SumList(3)", "3"],
+    \ [ 'SumList-multi', "SumList([1,2,3,-4])", "2"],
     \]
 
 :call JTRunTests(TestList)
